@@ -10,8 +10,22 @@ import signal
 import threading
 import webbrowser
 import logging
+import traceback
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+# Log to file next to the executable for diagnosis
+if getattr(sys, "frozen", False):
+    _log_path = os.path.join(os.path.dirname(sys.executable), "tessera.log")
+else:
+    _log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tessera.log")
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s [%(name)s]: %(message)s",
+    handlers=[
+        logging.FileHandler(_log_path, encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
 logger = logging.getLogger("tessera")
 
 HOST = "127.0.0.1"
@@ -28,20 +42,37 @@ def resource_path(relative: str) -> str:
 
 def start_server():
     """Start uvicorn in a thread."""
-    import uvicorn
+    try:
+        import uvicorn
 
-    # Set working directory so relative paths (data/) resolve correctly
-    os.chdir(resource_path("."))
+        base = resource_path(".")
+        logger.info(f"Resource base: {base}")
+        logger.info(f"_MEIPASS: {getattr(sys, '_MEIPASS', 'N/A')}")
+        logger.info(f"sys.executable: {sys.executable}")
+        logger.info(f"frozen: {getattr(sys, 'frozen', False)}")
 
-    # Import app directly instead of string path for PyInstaller compatibility
-    from backend.main import app
+        # Set working directory so relative paths resolve correctly
+        os.chdir(base)
 
-    uvicorn.run(
-        app,
-        host=HOST,
-        port=PORT,
-        log_level="info",
-    )
+        # Check static files
+        static_dir = os.path.join(base, "backend", "static")
+        logger.info(f"Static dir exists: {os.path.isdir(static_dir)}")
+        if os.path.isdir(static_dir):
+            logger.info(f"Static contents: {os.listdir(static_dir)}")
+
+        # Import app directly for PyInstaller compatibility
+        from backend.main import app
+
+        logger.info("App imported successfully, starting uvicorn...")
+
+        uvicorn.run(
+            app,
+            host=HOST,
+            port=PORT,
+            log_level="info",
+        )
+    except Exception:
+        logger.error(f"Server failed to start:\n{traceback.format_exc()}")
 
 
 def create_icon_image():
@@ -68,6 +99,8 @@ def create_icon_image():
 
 def main():
     import pystray
+
+    logger.info(f"Tessera launcher starting (log: {_log_path})")
 
     # Start server in background thread
     server_thread = threading.Thread(target=start_server, daemon=True)
