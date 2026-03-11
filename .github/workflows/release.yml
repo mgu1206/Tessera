@@ -61,10 +61,13 @@ jobs:
           block_cipher = None
 
           backend_data = []
+          static_prefix = os.path.join('backend', 'static')
           for root, dirs, files in os.walk('backend'):
               dirs[:] = [d for d in dirs if d != '__pycache__']
+              is_static = root == static_prefix or root.startswith(static_prefix + os.sep)
               for f in files:
-                  if f.endswith(('.py', '.pyi', '.html', '.css', '.js', '.ico')):
+                  # Include ALL files from static/, only .py from other dirs
+                  if is_static or f.endswith(('.py', '.pyi')):
                       src = os.path.join(root, f)
                       dst = os.path.dirname(src)
                       backend_data.append((src, dst))
@@ -117,10 +120,12 @@ jobs:
           block_cipher = None
 
           backend_data = []
+          static_prefix = os.path.join('backend', 'static')
           for root, dirs, files in os.walk('backend'):
               dirs[:] = [d for d in dirs if d != '__pycache__']
+              is_static = root == static_prefix or root.startswith(static_prefix + os.sep)
               for f in files:
-                  if f.endswith(('.py', '.pyi', '.html', '.css', '.js', '.ico')):
+                  if is_static or f.endswith(('.py', '.pyi')):
                       src = os.path.join(root, f)
                       dst = os.path.dirname(src)
                       backend_data.append((src, dst))
