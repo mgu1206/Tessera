@@ -1,4 +1,5 @@
 import os
+import sys
 import platform
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -39,7 +40,11 @@ def system_info():
 
 
 # Serve static web files
-static_dir = Path(__file__).parent / "static"
+# In PyInstaller bundle, _MEIPASS contains the extracted data files
+if getattr(sys, "_MEIPASS", None):
+    static_dir = Path(sys._MEIPASS) / "backend" / "static"
+else:
+    static_dir = Path(__file__).parent / "static"
 if static_dir.is_dir():
     assets_dir = static_dir / "assets"
     if assets_dir.is_dir():

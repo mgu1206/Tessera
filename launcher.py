@@ -33,8 +33,11 @@ def start_server():
     # Set working directory so relative paths (data/) resolve correctly
     os.chdir(resource_path("."))
 
+    # Import app directly instead of string path for PyInstaller compatibility
+    from backend.main import app
+
     uvicorn.run(
-        "backend.main:app",
+        app,
         host=HOST,
         port=PORT,
         log_level="info",

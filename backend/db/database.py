@@ -1,11 +1,17 @@
+import sys
 from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from backend.config import settings
 
-# Ensure data directory exists (next to project root)
-data_dir = Path(__file__).resolve().parent.parent.parent / "data"
+# Ensure data directory exists
+# In PyInstaller bundle: next to the executable
+# In dev: next to project root
+if getattr(sys, "frozen", False):
+    data_dir = Path(sys.executable).parent / "data"
+else:
+    data_dir = Path(__file__).resolve().parent.parent.parent / "data"
 data_dir.mkdir(exist_ok=True)
 
 # Resolve database URL: replace relative path with absolute
