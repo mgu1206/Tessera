@@ -1,0 +1,215 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: Tessera-macOS
+          - os: windows-latest
+            artifact: Tessera-Windows
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pystray Pillow pyinstaller
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          npm install
+          npm run build
+
+      - name: Copy frontend to backend static
+        shell: bash
+        run: |
+          rm -rf backend/static
+          cp -r web/dist backend/static
+
+      - name: Create PyInstaller spec (Windows)
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          import os
+
+          spec = '''# -*- mode: python ; coding: utf-8 -*-
+          import os
+
+          block_cipher = None
+
+          backend_data = []
+          for root, dirs, files in os.walk('backend'):
+              dirs[:] = [d for d in dirs if d != '__pycache__']
+              for f in files:
+                  if f.endswith(('.py', '.pyi', '.html', '.css', '.js', '.ico')):
+                      src = os.path.join(root, f)
+                      dst = os.path.dirname(src)
+                      backend_data.append((src, dst))
+
+          a = Analysis(
+              ['launcher.py'],
+              pathex=['.'],
+              datas=backend_data,
+              hiddenimports=[
+                  'uvicorn', 'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto',
+                  'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto',
+                  'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto',
+                  'uvicorn.lifespan', 'uvicorn.lifespan.on', 'uvicorn.lifespan.off',
+                  'fastapi', 'starlette', 'sqlalchemy', 'sqlalchemy.dialects.sqlite',
+                  'pydantic', 'pydantic_settings', 'httpx', 'keyring', 'keyring.backends',
+                  'SRT', 'SRT.srt', 'SRT.errors', 'SRT.passenger', 'SRT.seat_type', 'SRT.netfunnel',
+                  'backend', 'backend.main', 'backend.config',
+                  'backend.db', 'backend.db.database', 'backend.db.models',
+                  'backend.core', 'backend.core.auth', 'backend.core.event_bus',
+                  'backend.core.notification_settings', 'backend.core.notifier',
+                  'backend.core.poller', 'backend.core.srt_client',
+                  'backend.api', 'backend.api.routes', 'backend.api.routes.auth',
+                  'backend.api.routes.events', 'backend.api.routes.settings', 'backend.api.routes.tickets',
+              ],
+              cipher=block_cipher,
+              noarchive=False,
+          )
+
+          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+          exe = EXE(
+              pyz, a.scripts, [],
+              exclude_binaries=True,
+              name='Tessera',
+              debug=False, strip=False, upx=True,
+              console=False,
+          )
+
+          coll = COLLECT(exe, a.binaries, a.zipfiles, a.datas, strip=False, upx=True, name='Tessera')
+          '''
+
+          with open('tessera-win.spec', 'w') as f:
+              f.write(spec)
+
+      - name: Build with PyInstaller (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cat > tessera-ci.spec << 'PYEOF'
+          import os
+          block_cipher = None
+
+          backend_data = []
+          for root, dirs, files in os.walk('backend'):
+              dirs[:] = [d for d in dirs if d != '__pycache__']
+              for f in files:
+                  if f.endswith(('.py', '.pyi', '.html', '.css', '.js', '.ico')):
+                      src = os.path.join(root, f)
+                      dst = os.path.dirname(src)
+                      backend_data.append((src, dst))
+
+          a = Analysis(
+              ['launcher.py'],
+              pathex=['.'],
+              datas=backend_data,
+              hiddenimports=[
+                  'uvicorn', 'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto',
+                  'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto',
+                  'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto',
+                  'uvicorn.lifespan', 'uvicorn.lifespan.on', 'uvicorn.lifespan.off',
+                  'fastapi', 'starlette', 'sqlalchemy', 'sqlalchemy.dialects.sqlite',
+                  'pydantic', 'pydantic_settings', 'httpx', 'keyring', 'keyring.backends',
+                  'SRT', 'SRT.srt', 'SRT.errors', 'SRT.passenger', 'SRT.seat_type', 'SRT.netfunnel',
+                  'backend', 'backend.main', 'backend.config',
+                  'backend.db', 'backend.db.database', 'backend.db.models',
+                  'backend.core', 'backend.core.auth', 'backend.core.event_bus',
+                  'backend.core.notification_settings', 'backend.core.notifier',
+                  'backend.core.poller', 'backend.core.srt_client',
+                  'backend.api', 'backend.api.routes', 'backend.api.routes.auth',
+                  'backend.api.routes.events', 'backend.api.routes.settings', 'backend.api.routes.tickets',
+              ],
+              cipher=block_cipher,
+              noarchive=False,
+          )
+
+          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+          exe = EXE(
+              pyz, a.scripts, [],
+              exclude_binaries=True,
+              name='Tessera',
+              debug=False, strip=False, upx=True,
+              console=False,
+          )
+
+          coll = COLLECT(exe, a.binaries, a.zipfiles, a.datas, strip=False, upx=True, name='Tessera')
+
+          app = BUNDLE(
+              coll,
+              name='Tessera.app',
+              bundle_identifier='com.tessera.app',
+              info_plist={
+                  'CFBundleName': 'Tessera',
+                  'CFBundleDisplayName': 'Tessera',
+                  'CFBundleVersion': '1.0.0',
+                  'CFBundleShortVersionString': '1.0.0',
+                  'LSUIElement': True,
+              },
+          )
+          PYEOF
+          python -m PyInstaller tessera-ci.spec --noconfirm
+
+      - name: Build with PyInstaller (Windows)
+        if: runner.os == 'Windows'
+        run: python -m PyInstaller tessera-win.spec --noconfirm
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          zip -r ../Tessera-macOS.zip Tessera.app
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd dist
+          7z a ../Tessera-Windows.zip Tessera/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Tessera-macOS/Tessera-macOS.zip
+            Tessera-Windows/Tessera-Windows.zip
+          generate_release_notes: true

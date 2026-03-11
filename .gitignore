@@ -1,0 +1,14 @@
+.env
+data/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+node_modules/
+web/dist/
+*.egg-info/
+.venv/
+backend/static/
+build/
+dist/
+*.spec

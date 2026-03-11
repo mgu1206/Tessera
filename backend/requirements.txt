@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic-settings
+SRTrain
+python-dotenv
+httpx
+keyring
