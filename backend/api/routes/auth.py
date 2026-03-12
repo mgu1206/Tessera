@@ -25,12 +25,17 @@ async def login(body: LoginRequest):
     # Validate credentials by attempting SRT login
     client = SRTClient(body.srt_id, body.srt_password)
     try:
-        await asyncio.to_thread(client._get_client)
+        await asyncio.wait_for(
+            asyncio.to_thread(client._get_client),
+            timeout=30,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(408, "SRT 로그인 시간 초과: 서버 응답 없음")
     except Exception as e:
         raise HTTPException(401, f"SRT 로그인 실패: {repr(e)}")
     finally:
         try:
-            client._logout()
+            await asyncio.to_thread(client._logout)
         except Exception:
             pass
 
