@@ -8,6 +8,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import mimetypes
+
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
 
 from backend.db.database import engine
 from backend.db import models
@@ -48,9 +52,11 @@ def system_info():
 
 
 # Serve static web files
-# In PyInstaller bundle, _MEIPASS contains the extracted data files
-if getattr(sys, "_MEIPASS", None):
-    static_dir = Path(sys._MEIPASS) / "backend" / "static"
+# In PyInstaller bundle, _MEIPASS contains the extracted data files (for one-file/macOS apps)
+# For one-dir apps, we fallback to sys.executable's directory
+if getattr(sys, "frozen", False):
+    app_root = Path(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)))
+    static_dir = app_root / "backend" / "static"
 else:
     static_dir = Path(__file__).parent / "static"
 if static_dir.is_dir():

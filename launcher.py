@@ -35,14 +35,27 @@ URL = f"http://{HOST}:{PORT}"
 
 def resource_path(relative: str) -> str:
     """Resolve path for both dev and PyInstaller bundle."""
-    if getattr(sys, "_MEIPASS", None):
-        return os.path.join(sys._MEIPASS, relative)
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative)
+    if getattr(sys, "frozen", False):
+        base_path = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative)
 
 
 def start_server():
     """Start uvicorn in a thread."""
     try:
+        import sys
+        
+        # Override sys.stdout / sys.stderr safely for pyinstaller noconsole
+        if getattr(sys, "frozen", False):
+            class _DummyStream:
+                def write(self, *args, **kwargs): pass
+                def flush(self, *args, **kwargs): pass
+                def isatty(self): return False
+            sys.stdout = _DummyStream()
+            sys.stderr = _DummyStream()
+
         import uvicorn
 
         base = resource_path(".")
@@ -69,7 +82,7 @@ def start_server():
             app,
             host=HOST,
             port=PORT,
-            log_level="info",
+            log_config=None,
         )
     except Exception:
         logger.error(f"Server failed to start:\n{traceback.format_exc()}")
