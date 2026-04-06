@@ -106,3 +106,10 @@ def ktx_status():
         "ktx_logged_in": auth.is_ktx_logged_in(),
         "ktx_id": ktx_creds["ktx_id"] if ktx_creds else None,
     }
+
+
+@router.post("/srt/logout")
+def srt_clear():
+    """SRT 자격증명만 삭제 (폴링/티켓 유지)."""
+    auth.logout()
+    return {"ok": True}

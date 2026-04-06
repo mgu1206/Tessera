@@ -60,3 +60,9 @@ export async function ktxLogout(): Promise<void> {
   const res = await fetch('/api/auth/ktx/logout', { method: 'POST' })
   if (!res.ok) throw new Error('KTX 로그아웃 실패')
 }
+
+/** SRT 자격증명만 삭제 (폴링/티켓 유지). */
+export async function srtClear(): Promise<void> {
+  const res = await fetch('/api/auth/srt/logout', { method: 'POST' })
+  if (!res.ok) throw new Error('SRT 계정 해제 실패')
+}

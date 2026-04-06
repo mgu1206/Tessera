@@ -431,3 +431,6 @@ input[type=number] { max-width: 80px; }
 
 /* Reservation number in result */
 .reservation-number { font-size: 11px; color: var(--text-muted); }
+
+/* Settings account actions */
+.settings-account-actions { display: flex; gap: 8px; flex-wrap: wrap; }

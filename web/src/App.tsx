@@ -5,7 +5,6 @@ import { getAuthStatus, srtLogout } from './api/auth'
 import { subscribeEvents } from './api/events'
 import { TicketForm } from './components/TicketForm'
 import { TicketCard } from './components/TicketCard'
-import { LoginPage } from './components/LoginPage'
 import { SettingsPage } from './components/SettingsPage'
 
 type Page = 'main' | 'settings'
@@ -29,7 +28,7 @@ export function App() {
   useEffect(() => {
     getAuthStatus()
       .then((s) => {
-        setLoggedIn(s.logged_in)
+        setLoggedIn(s.logged_in || s.ktx_logged_in)
         setSrtId(s.srt_id)
         setKtxLoggedIn(s.ktx_logged_in)
         setKtxId(s.ktx_id)
@@ -72,11 +71,17 @@ export function App() {
     return unsub
   }, [loggedIn])
 
-  function handleLogin(id: string) {
-    setSrtId(id)
-    setLoggedIn(true)
-    setTickets([])
-    setLoadError('')
+  function handleAccountChange(srtIn: boolean, sid: string | null, ktxIn: boolean, kid: string | null) {
+    setSrtId(sid)
+    setKtxLoggedIn(ktxIn)
+    setKtxId(kid)
+    if (srtIn || ktxIn) {
+      setLoggedIn(true)
+      setTickets([])
+      setLoadError('')
+    } else {
+      setLoggedIn(false)
+    }
   }
 
   async function handleLogout() {
@@ -159,16 +164,22 @@ export function App() {
   }
 
   if (!loggedIn) {
-    return <LoginPage onLogin={handleLogin} />
+    return (
+      <SettingsPage
+        onAccountChange={handleAccountChange}
+      />
+    )
   }
 
   if (page === 'settings') {
     return (
       <SettingsPage
         onBack={() => setPage('main')}
-        onKtxStatusChange={(loggedIn, id) => {
-          setKtxLoggedIn(loggedIn)
-          setKtxId(id)
+        onAccountChange={(sl, sid, kl, kid) => {
+          setSrtId(sid)
+          setKtxLoggedIn(kl)
+          setKtxId(kid)
+          if (!sl && !kl) setLoggedIn(false)
         }}
       />
     )
@@ -190,8 +201,9 @@ export function App() {
         <div>
           <h1>Tessera</h1>
           <span className="subtitle">
-            SRT 자동 예매 — {srtId}
-            {ktxLoggedIn && <span className="ktx-active-badge"> · KTX({ktxId})</span>}
+            {srtId && `SRT: ${srtId}`}
+            {srtId && ktxLoggedIn && ' · '}
+            {ktxLoggedIn && <span className="ktx-active-badge">KTX: {ktxId}</span>}
           </span>
         </div>
         <div className="header-actions">
