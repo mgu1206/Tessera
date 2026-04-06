@@ -416,6 +416,20 @@ input[type=number] { max-width: 80px; }
 }
 .group-count { color: var(--text-muted); font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
 
+/* Expand/collapse toggle button */
+.btn-expand-trains {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+  flex-shrink: 0;
+}
+.btn-expand-trains:hover { border-color: var(--accent); color: var(--accent); }
+
 /* KTX status in header */
 .ktx-active-badge { color: #ff8a65; font-size: 12px; }
 

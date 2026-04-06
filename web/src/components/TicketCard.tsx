@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Ticket } from '../types'
 import { cancelTicket, patchTicket } from '../api/tickets'
 
@@ -71,6 +72,8 @@ export function TicketCard({ ticket, onCancelled, onDeleted, onUpdated, selectab
       alert(e instanceof Error ? e.message : '업데이트 실패')
     }
   }
+
+  const [trainsExpanded, setTrainsExpanded] = useState(false)
 
   const info = ticket.reservation_info
   const canCancel = ticket.status === 'POLLING' || ticket.status === 'PENDING'
@@ -149,32 +152,37 @@ export function TicketCard({ ticket, onCancelled, onDeleted, onUpdated, selectab
 
       {ticket.status === 'POLLING' && ticket.last_search_results && ticket.last_search_results.length > 0 && (
         <div className="train-results">
-          <table className="train-table">
-            <thead>
-              <tr>
-                <th>열차</th>
-                <th>출발</th>
-                <th>도착</th>
-                <th>일반실</th>
-                <th>특실</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ticket.last_search_results.map((t, i) => (
-                <tr key={`${t.train_number}-${i}`}>
-                  <td className="train-name">{t.train_name} {t.train_number}</td>
-                  <td>{formatTime(t.dep_time)}</td>
-                  <td>{formatTime(t.arr_time)}</td>
-                  <td className={t.general_available ? 'seat-available' : 'seat-unavailable'}>
-                    {t.general_seat}
-                  </td>
-                  <td className={t.special_available ? 'seat-available' : 'seat-unavailable'}>
-                    {t.special_seat}
-                  </td>
+          <button className="btn-expand-trains" onClick={() => setTrainsExpanded(v => !v)}>
+            조회된 열차 {ticket.last_search_results.length}편 {trainsExpanded ? '▲' : '▼'}
+          </button>
+          {trainsExpanded && (
+            <table className="train-table">
+              <thead>
+                <tr>
+                  <th>열차</th>
+                  <th>출발</th>
+                  <th>도착</th>
+                  <th>일반실</th>
+                  <th>특실</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {ticket.last_search_results.map((t, i) => (
+                  <tr key={`${t.train_number}-${i}`}>
+                    <td className="train-name">{t.train_name} {t.train_number}</td>
+                    <td>{formatTime(t.dep_time)}</td>
+                    <td>{formatTime(t.arr_time)}</td>
+                    <td className={t.general_available ? 'seat-available' : 'seat-unavailable'}>
+                      {t.general_seat}
+                    </td>
+                    <td className={t.special_available ? 'seat-available' : 'seat-unavailable'}>
+                      {t.special_seat}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 

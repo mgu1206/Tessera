@@ -24,6 +24,7 @@ export function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [groupInputVisible, setGroupInputVisible] = useState(false)
   const [groupName, setGroupName] = useState('')
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     getAuthStatus()
@@ -111,6 +112,15 @@ export function App() {
 
   function handleUpdated(updated: Ticket) {
     setTickets((prev) => prev.map((t) => (t.ticket_id === updated.ticket_id ? updated : t)))
+  }
+
+  function toggleGroup(gid: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(gid)) next.delete(gid)
+      else next.add(gid)
+      return next
+    })
   }
 
   function toggleSelectionMode() {
@@ -287,8 +297,11 @@ export function App() {
                   {gid}
                   <span className="group-count"> ({completedCount}/{gTickets.length} 완료)</span>
                 </h2>
+                <button className="btn-expand-trains" onClick={() => toggleGroup(gid)}>
+                  {collapsedGroups.has(gid) ? '▼' : '▲'}
+                </button>
               </div>
-              {gTickets.map((t) => (
+              {!collapsedGroups.has(gid) && gTickets.map((t) => (
                 <TicketCard
                   key={t.ticket_id}
                   ticket={t}
