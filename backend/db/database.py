@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from backend.config import settings
@@ -37,3 +37,19 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def run_migrations():
+    """기존 DB에 새 컬럼을 추가하는 간단한 마이그레이션."""
+    migrations = [
+        "ALTER TABLE tickets ADD COLUMN train_type VARCHAR(3) DEFAULT 'SRT'",
+        "ALTER TABLE tickets ADD COLUMN group_id VARCHAR",
+        "ALTER TABLE tickets ADD COLUMN manually_completed BOOLEAN DEFAULT 0",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # 컬럼이 이미 존재하면 무시

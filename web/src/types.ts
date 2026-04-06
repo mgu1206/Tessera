@@ -1,5 +1,6 @@
 export type TicketStatus = 'PENDING' | 'POLLING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'
 export type SeatType = 'GENERAL_FIRST' | 'GENERAL_ONLY' | 'SPECIAL_FIRST' | 'SPECIAL_ONLY'
+export type TrainType = 'SRT' | 'KTX'
 
 export interface Passengers {
   adult: number
@@ -8,7 +9,7 @@ export interface Passengers {
 }
 
 export interface ReservationInfo {
-  reservation_number: number
+  reservation_number: number | string
   total_cost: number
   train_name: string
   train_number: string
@@ -33,6 +34,7 @@ export interface TrainResult {
 
 export interface Ticket {
   ticket_id: string
+  train_type: TrainType
   dep: string
   arr: string
   date: string
@@ -47,9 +49,12 @@ export interface Ticket {
   reservation_info: ReservationInfo | null
   last_searched_at: string | null
   last_search_results: TrainResult[] | null
+  group_id: string | null
+  manually_completed: boolean
 }
 
 export interface TicketCreateRequest {
+  train_type: TrainType
   dep: string
   arr: string
   date: string
@@ -57,4 +62,9 @@ export interface TicketCreateRequest {
   time_limit?: string
   seat_type: SeatType
   passengers: Passengers
+}
+
+export interface TicketGroup {
+  group_id: string
+  tickets: Ticket[]
 }

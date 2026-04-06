@@ -13,21 +13,22 @@ import mimetypes
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 
-from backend.db.database import engine
+from backend.db.database import engine, run_migrations
 from backend.db import models
-from backend.api.routes import tickets, events, auth, settings
-from backend.core.auth import restore_from_keychain
+from backend.api.routes import tickets, events, auth, settings, groups
+from backend.core.auth import restore_from_keychain, restore_ktx_from_keychain
 from backend.core.poller import resume_polling
 
 
 models.Base.metadata.create_all(bind=engine)
+run_migrations()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Restore credentials from OS keychain and resume polling
-    if restore_from_keychain():
-        await resume_polling()
+    restore_from_keychain()
+    restore_ktx_from_keychain()
+    await resume_polling()
     yield
 
 
@@ -44,6 +45,7 @@ app.include_router(auth.router)
 app.include_router(tickets.router)
 app.include_router(events.router)
 app.include_router(settings.router)
+app.include_router(groups.router)
 
 
 @app.get("/api/system/info")
@@ -52,8 +54,6 @@ def system_info():
 
 
 # Serve static web files
-# In PyInstaller bundle, _MEIPASS contains the extracted data files (for one-file/macOS apps)
-# For one-dir apps, we fallback to sys.executable's directory
 if getattr(sys, "frozen", False):
     app_root = Path(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)))
     static_dir = app_root / "backend" / "static"

@@ -1,7 +1,7 @@
 import { useState, FormEvent } from 'react'
-import { TicketCreateRequest, SeatType } from '../types'
+import { TicketCreateRequest, SeatType, TrainType } from '../types'
 
-const STATIONS = [
+const SRT_STATIONS = [
   '수서', '동탄', '평택지제', '천안아산', '오송', '대전', '김천(구미)',
   '동대구', '서대구', '신경주', '경주', '울산(통도사)', '부산',
   '공주', '익산', '전주', '정읍', '광주송정', '나주', '목포',
@@ -9,12 +9,25 @@ const STATIONS = [
   '창원중앙', '창원', '마산', '진영', '진주', '포항',
 ]
 
+const KTX_STATIONS = [
+  '서울', '용산', '광명', '수원', '천안아산', '오송', '대전', '김천구미',
+  '동대구', '경주', '울산', '부산',
+  '익산', '전주', '정읍', '광주송정', '목포',
+  '순천', '여수EXPO',
+  '창원중앙', '창원', '마산', '진주',
+  '포항',
+  '만종', '둔내', '평창', '진부', '강릉',
+  '구포', '밀양',
+]
+
 interface Props {
   onSubmit: (data: TicketCreateRequest) => Promise<void>
+  ktxLoggedIn?: boolean
 }
 
-export function TicketForm({ onSubmit }: Props) {
+export function TicketForm({ onSubmit, ktxLoggedIn }: Props) {
   const today = new Date().toISOString().slice(0, 10)
+  const [trainType, setTrainType] = useState<TrainType>('SRT')
   const [dep, setDep] = useState('수서')
   const [arr, setArr] = useState('부산')
   const [date, setDate] = useState(today)
@@ -27,12 +40,26 @@ export function TicketForm({ onSubmit }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const stations = trainType === 'SRT' ? SRT_STATIONS : KTX_STATIONS
+
+  function handleTrainTypeChange(t: TrainType) {
+    setTrainType(t)
+    const stList = t === 'SRT' ? SRT_STATIONS : KTX_STATIONS
+    setDep(stList[0])
+    setArr(stList[stList.length > 11 ? 11 : 1])
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
+    if (trainType === 'KTX' && !ktxLoggedIn) {
+      setError('KTX 예매를 위해 설정에서 KTX 계정을 먼저 등록해주세요.')
+      return
+    }
     setLoading(true)
     try {
       await onSubmit({
+        train_type: trainType,
         dep,
         arr,
         date: date.replace(/-/g, ''),
@@ -54,16 +81,35 @@ export function TicketForm({ onSubmit }: Props) {
 
       <div className="form-row">
         <div className="form-group">
+          <label>열차 종류</label>
+          <div className="train-type-toggle">
+            <button
+              type="button"
+              className={`train-type-btn${trainType === 'SRT' ? ' active' : ''}`}
+              onClick={() => handleTrainTypeChange('SRT')}
+            >SRT</button>
+            <button
+              type="button"
+              className={`train-type-btn${trainType === 'KTX' ? ' active' : ''}${!ktxLoggedIn ? ' disabled' : ''}`}
+              onClick={() => handleTrainTypeChange('KTX')}
+              title={!ktxLoggedIn ? '설정에서 KTX 계정을 먼저 등록하세요' : undefined}
+            >KTX{!ktxLoggedIn ? ' (미등록)' : ''}</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
           <label>출발역</label>
           <select value={dep} onChange={(e) => setDep(e.target.value)}>
-            {STATIONS.map((s) => <option key={s}>{s}</option>)}
+            {stations.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
         <div className="form-arrow">→</div>
         <div className="form-group">
           <label>도착역</label>
           <select value={arr} onChange={(e) => setArr(e.target.value)}>
-            {STATIONS.map((s) => <option key={s}>{s}</option>)}
+            {stations.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
       </div>

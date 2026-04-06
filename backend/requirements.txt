@@ -6,3 +6,5 @@ SRTrain>=2.6.7
 python-dotenv
 httpx
 keyring
+korail2
+pycryptodome

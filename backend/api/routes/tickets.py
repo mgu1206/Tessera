@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from backend.core import poller
 from backend.core.event_bus import event_bus
-from backend.core.srt_client import STATIONS
+from backend.core.srt_client import STATIONS as SRT_STATIONS
+from backend.core.ktx_client import KTX_STATIONS
 from backend.db.database import get_db
 from backend.db.models import Ticket
 
@@ -22,6 +23,7 @@ class PassengersIn(BaseModel):
 
 
 class TicketCreate(BaseModel):
+    train_type: str = "SRT"
     dep: str
     arr: str
     date: str
@@ -29,6 +31,11 @@ class TicketCreate(BaseModel):
     time_limit: str | None = None
     seat_type: str = "GENERAL_FIRST"
     passengers: PassengersIn = PassengersIn()
+
+
+class TicketPatch(BaseModel):
+    group_id: str | None = None
+    manually_completed: bool | None = None
 
 
 def _generate_id(db: Session) -> str:
@@ -42,6 +49,7 @@ def _generate_id(db: Session) -> str:
 def _to_dict(t: Ticket) -> dict:
     return {
         "ticket_id": t.id,
+        "train_type": t.train_type or "SRT",
         "dep": t.dep,
         "arr": t.arr,
         "date": t.date,
@@ -56,6 +64,8 @@ def _to_dict(t: Ticket) -> dict:
         "reservation_info": t.reservation_info,
         "last_searched_at": t.last_searched_at.isoformat() if t.last_searched_at else None,
         "last_search_results": t.last_search_results,
+        "group_id": t.group_id,
+        "manually_completed": bool(t.manually_completed),
     }
 
 
@@ -67,10 +77,15 @@ def list_tickets(db: Session = Depends(get_db)):
 
 @router.post("", status_code=201)
 async def create_ticket(body: TicketCreate, db: Session = Depends(get_db)):
-    if body.dep not in STATIONS:
-        raise HTTPException(400, f"출발역 '{body.dep}'은 SRT 지원 역이 아닙니다.")
-    if body.arr not in STATIONS:
-        raise HTTPException(400, f"도착역 '{body.arr}'은 SRT 지원 역이 아닙니다.")
+    train_type = body.train_type.upper()
+    if train_type not in ("SRT", "KTX"):
+        raise HTTPException(400, "train_type은 SRT 또는 KTX여야 합니다.")
+
+    stations = SRT_STATIONS if train_type == "SRT" else KTX_STATIONS
+    if body.dep not in stations:
+        raise HTTPException(400, f"출발역 '{body.dep}'은 {train_type} 지원 역이 아닙니다.")
+    if body.arr not in stations:
+        raise HTTPException(400, f"도착역 '{body.arr}'은 {train_type} 지원 역이 아닙니다.")
     if body.dep == body.arr:
         raise HTTPException(400, "출발역과 도착역이 같습니다.")
     total = body.passengers.adult + body.passengers.child + body.passengers.senior
@@ -79,9 +94,15 @@ async def create_ticket(body: TicketCreate, db: Session = Depends(get_db)):
     if total > 9:
         raise HTTPException(400, "승객은 최대 9명까지 가능합니다.")
 
+    if train_type == "KTX":
+        from backend.core.auth import is_ktx_logged_in
+        if not is_ktx_logged_in():
+            raise HTTPException(401, "KTX 예매를 위해 설정에서 KTX 계정을 먼저 등록해주세요.")
+
     tid = _generate_id(db)
     ticket = Ticket(
         id=tid,
+        train_type=train_type,
         dep=body.dep,
         arr=body.arr,
         date=body.date,
@@ -92,6 +113,8 @@ async def create_ticket(body: TicketCreate, db: Session = Depends(get_db)):
         status="POLLING",
         attempt_count=0,
         created_at=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))),
+        group_id=None,
+        manually_completed=False,
     )
     db.add(ticket)
     db.commit()
@@ -108,6 +131,23 @@ def get_ticket(ticket_id: str, db: Session = Depends(get_db)):
     if not ticket:
         raise HTTPException(404, "티켓을 찾을 수 없습니다.")
     return _to_dict(ticket)
+
+
+@router.patch("/{ticket_id}")
+async def patch_ticket(ticket_id: str, body: TicketPatch, db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(404, "티켓을 찾을 수 없습니다.")
+
+    if body.group_id is not None:
+        ticket.group_id = body.group_id if body.group_id != "" else None
+    if body.manually_completed is not None:
+        ticket.manually_completed = body.manually_completed
+
+    db.commit()
+    updated = _to_dict(ticket)
+    await event_bus.publish("ticket.updated", updated)
+    return updated
 
 
 @router.delete("/{ticket_id}")

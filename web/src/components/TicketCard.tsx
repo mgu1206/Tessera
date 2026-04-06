@@ -1,5 +1,5 @@
 import { Ticket } from '../types'
-import { cancelTicket } from '../api/tickets'
+import { cancelTicket, patchTicket } from '../api/tickets'
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: '대기',
@@ -36,9 +36,13 @@ interface Props {
   ticket: Ticket
   onCancelled: (id: string) => void
   onDeleted: (id: string) => void
+  onUpdated?: (ticket: Ticket) => void
+  selectable?: boolean
+  selected?: boolean
+  onSelectToggle?: (id: string) => void
 }
 
-export function TicketCard({ ticket, onCancelled, onDeleted }: Props) {
+export function TicketCard({ ticket, onCancelled, onDeleted, onUpdated, selectable, selected, onSelectToggle }: Props) {
   async function handleCancel() {
     if (!confirm(`티켓 #${ticket.ticket_id}를 취소하시겠습니까?`)) return
     try {
@@ -59,22 +63,61 @@ export function TicketCard({ ticket, onCancelled, onDeleted }: Props) {
     }
   }
 
+  async function handleToggleComplete() {
+    try {
+      const updated = await patchTicket(ticket.ticket_id, { manually_completed: !ticket.manually_completed })
+      onUpdated?.(updated)
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : '업데이트 실패')
+    }
+  }
+
   const info = ticket.reservation_info
   const canCancel = ticket.status === 'POLLING' || ticket.status === 'PENDING'
   const canDelete = ticket.status === 'SUCCESS' || ticket.status === 'FAILED' || ticket.status === 'CANCELLED'
 
   return (
-    <div className={`ticket-card ${ticket.status === 'SUCCESS' ? 'ticket-success' : ''}`}>
+    <div
+      className={`ticket-card${ticket.status === 'SUCCESS' ? ' ticket-success' : ''}${selected ? ' ticket-selected' : ''}`}
+      onClick={selectable ? () => onSelectToggle?.(ticket.ticket_id) : undefined}
+      style={selectable ? { cursor: 'pointer' } : undefined}
+    >
       <div className="ticket-header">
+        {selectable && (
+          <input
+            type="checkbox"
+            className="ticket-checkbox"
+            checked={selected}
+            onChange={() => onSelectToggle?.(ticket.ticket_id)}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+        <span className={`train-type-badge train-type-${ticket.train_type?.toLowerCase() || 'srt'}`}>
+          {ticket.train_type || 'SRT'}
+        </span>
         <span className="ticket-id">#{ticket.ticket_id}</span>
         <span className={`status-badge ${STATUS_CLASS[ticket.status]}`}>
           {STATUS_LABEL[ticket.status]}
         </span>
-        {canCancel && (
+        {ticket.group_id && (
+          <span className="group-tag">{ticket.group_id}</span>
+        )}
+        {ticket.manually_completed && (
+          <span className="complete-tag">완료</span>
+        )}
+        {!selectable && canCancel && (
           <button className="btn-cancel" onClick={handleCancel}>취소</button>
         )}
-        {canDelete && (
+        {!selectable && canDelete && (
           <button className="btn-cancel" onClick={handleDelete}>삭제</button>
+        )}
+        {!selectable && ticket.group_id && (
+          <button
+            className={`btn-complete${ticket.manually_completed ? ' btn-complete-done' : ''}`}
+            onClick={handleToggleComplete}
+          >
+            {ticket.manually_completed ? '완료 취소' : '완료 표시'}
+          </button>
         )}
       </div>
 
@@ -117,8 +160,8 @@ export function TicketCard({ ticket, onCancelled, onDeleted }: Props) {
               </tr>
             </thead>
             <tbody>
-              {ticket.last_search_results.map((t) => (
-                <tr key={t.train_number}>
+              {ticket.last_search_results.map((t, i) => (
+                <tr key={`${t.train_number}-${i}`}>
                   <td className="train-name">{t.train_name} {t.train_number}</td>
                   <td>{formatTime(t.dep_time)}</td>
                   <td>{formatTime(t.arr_time)}</td>
@@ -142,8 +185,11 @@ export function TicketCard({ ticket, onCancelled, onDeleted }: Props) {
             <span>{formatTime(info.dep_time)} → {formatTime(info.arr_time)}</span>
           </div>
           <div className="result-row">
-            <span className="price">{info.total_cost.toLocaleString()}원</span>
-            <span className="deadline">결제기한 {info.payment_date} {formatTime(info.payment_time)}</span>
+            <span className="price">{typeof info.total_cost === 'number' ? info.total_cost.toLocaleString() : info.total_cost}원</span>
+            <span className="deadline">결제기한 {info.payment_date} {info.payment_time ? formatTime(info.payment_time) : ''}</span>
+          </div>
+          <div className="result-row">
+            <span className="reservation-number">예약번호: {info.reservation_number}</span>
           </div>
         </div>
       )}

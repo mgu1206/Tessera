@@ -7,12 +7,14 @@ import {
   testImessage,
   getSystemInfo,
 } from '../api/settings'
+import { ktxLogin, ktxLogout, getAuthStatus } from '../api/auth'
 
 interface Props {
   onBack: () => void
+  onKtxStatusChange?: (loggedIn: boolean, ktxId: string | null) => void
 }
 
-export function SettingsPage({ onBack }: Props) {
+export function SettingsPage({ onBack, onKtxStatusChange }: Props) {
   const [settings, setSettings] = useState<AppSettings>({
     telegram_enabled: false,
     telegram_bot_token: '',
@@ -29,9 +31,20 @@ export function SettingsPage({ onBack }: Props) {
   const [testingIm, setTestingIm] = useState(false)
   const [message, setMessage] = useState('')
 
+  // KTX auth state
+  const [ktxLoggedIn, setKtxLoggedIn] = useState(false)
+  const [ktxCurrentId, setKtxCurrentId] = useState<string | null>(null)
+  const [ktxId, setKtxId] = useState('')
+  const [ktxPassword, setKtxPassword] = useState('')
+  const [ktxSaving, setKtxSaving] = useState(false)
+
   useEffect(() => {
     getSettings().then(setSettings).catch(() => {})
     getSystemInfo().then((info) => setIsMac(info.platform === 'Darwin')).catch(() => {})
+    getAuthStatus().then((s) => {
+      setKtxLoggedIn(s.ktx_logged_in)
+      setKtxCurrentId(s.ktx_id)
+    }).catch(() => {})
   }, [])
 
   async function handleSave() {
@@ -41,8 +54,8 @@ export function SettingsPage({ onBack }: Props) {
       const updated = await updateSettings(settings)
       setSettings(updated)
       setMessage('저장 완료')
-    } catch (err: any) {
-      setMessage(err.message)
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : '저장 실패')
     } finally {
       setSaving(false)
     }
@@ -54,8 +67,8 @@ export function SettingsPage({ onBack }: Props) {
     try {
       await testTelegram()
       setMessage('텔레그램 테스트 전송 완료')
-    } catch (err: any) {
-      setMessage(err.message)
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : '실패')
     } finally {
       setTestingTg(false)
     }
@@ -67,10 +80,45 @@ export function SettingsPage({ onBack }: Props) {
     try {
       await testImessage()
       setMessage('iMessage 테스트 전송 완료')
-    } catch (err: any) {
-      setMessage(err.message)
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : '실패')
     } finally {
       setTestingIm(false)
+    }
+  }
+
+  async function handleKtxLogin() {
+    if (!ktxId || !ktxPassword) {
+      setMessage('KTX ID와 비밀번호를 입력하세요.')
+      return
+    }
+    setKtxSaving(true)
+    setMessage('')
+    try {
+      await ktxLogin(ktxId, ktxPassword)
+      setKtxLoggedIn(true)
+      setKtxCurrentId(ktxId)
+      setKtxPassword('')
+      setMessage('KTX 계정 등록 완료')
+      onKtxStatusChange?.(true, ktxId)
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : 'KTX 로그인 실패')
+    } finally {
+      setKtxSaving(false)
+    }
+  }
+
+  async function handleKtxLogout() {
+    try {
+      await ktxLogout()
+      setKtxLoggedIn(false)
+      setKtxCurrentId(null)
+      setKtxId('')
+      setKtxPassword('')
+      setMessage('KTX 계정 해제 완료')
+      onKtxStatusChange?.(false, null)
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : 'KTX 로그아웃 실패')
     }
   }
 
@@ -108,6 +156,53 @@ export function SettingsPage({ onBack }: Props) {
       </header>
 
       <main className="app-main">
+        {/* KTX 계정 */}
+        <div className="card">
+          <div className="settings-header">
+            <h3 className="section-title" style={{ marginBottom: 0 }}>KTX 계정 (Korail)</h3>
+            {ktxLoggedIn && <span className="ktx-status-badge">등록됨: {ktxCurrentId}</span>}
+          </div>
+          {ktxLoggedIn ? (
+            <div className="settings-form">
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                KTX 계정이 등록되어 있습니다. KTX 예매가 가능합니다.
+              </p>
+              <button className="btn-test" onClick={handleKtxLogout}>
+                KTX 계정 해제
+              </button>
+            </div>
+          ) : (
+            <div className="settings-form">
+              <div className="form-group">
+                <label>코레일 ID (회원번호 / 이메일 / 휴대폰)</label>
+                <input
+                  type="text"
+                  value={ktxId}
+                  onChange={(e) => setKtxId(e.target.value)}
+                  placeholder="회원번호, 이메일 또는 휴대폰번호"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="form-group">
+                <label>비밀번호</label>
+                <input
+                  type="password"
+                  value={ktxPassword}
+                  onChange={(e) => setKtxPassword(e.target.value)}
+                  placeholder="코레일 비밀번호"
+                />
+              </div>
+              <button
+                className="btn-test"
+                onClick={handleKtxLogin}
+                disabled={ktxSaving || !ktxId || !ktxPassword}
+              >
+                {ktxSaving ? '검증 중...' : 'KTX 계정 등록'}
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Polling settings */}
         <div className="card">
           <h3 className="section-title">예매 설정</h3>

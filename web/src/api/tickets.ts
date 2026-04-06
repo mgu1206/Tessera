@@ -25,3 +25,13 @@ export async function cancelTicket(ticketId: string): Promise<void> {
   const res = await fetch(`${BASE}/${ticketId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await res.text())
 }
+
+export async function patchTicket(ticketId: string, data: { group_id?: string | null; manually_completed?: boolean }): Promise<Ticket> {
+  const res = await fetch(`${BASE}/${ticketId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}

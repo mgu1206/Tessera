@@ -317,3 +317,117 @@ input[type=number] { max-width: 80px; }
 
 .error { color: var(--danger); font-size: 13px; margin-top: 6px; }
 .empty { text-align: center; color: var(--text-muted); padding: 40px 0; }
+
+/* Train type toggle in form */
+.train-type-toggle { display: flex; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+.train-type-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.train-type-btn.active { background: var(--accent); color: #fff; }
+.train-type-btn.disabled { opacity: .5; }
+.train-type-btn:not(.active):hover { background: #1e2533; color: var(--text); }
+
+/* Train type badge on ticket card */
+.train-type-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: .03em;
+  flex-shrink: 0;
+}
+.train-type-srt { background: #1e3a6e; color: #6faaff; }
+.train-type-ktx { background: #3a1e1e; color: #ff8a65; }
+
+/* Group tag on ticket card */
+.group-tag {
+  background: #1e2f3a;
+  color: #5bc4f0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Complete tag */
+.complete-tag {
+  background: #1a3a2a;
+  color: var(--success);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+/* Complete toggle button */
+.btn-complete {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+  flex-shrink: 0;
+}
+.btn-complete:hover { border-color: var(--success); color: var(--success); }
+.btn-complete-done { border-color: var(--success); color: var(--success); }
+.btn-complete-done:hover { border-color: var(--text-muted); color: var(--text-muted); }
+
+/* Ticket selection */
+.ticket-selected { border-color: var(--accent) !important; background: #1a2240 !important; }
+.ticket-checkbox { width: auto; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+
+/* Selection active button */
+.btn-select-active { border-color: var(--accent); color: var(--accent); }
+
+/* Group creation bar */
+.group-create-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+}
+.group-create-hint { font-size: 13px; color: var(--text-muted); flex: 1; }
+.group-name-input { display: flex; gap: 8px; align-items: center; width: 100%; }
+.group-name-input input { flex: 1; }
+
+/* Group section */
+.group-section { border-left: 3px solid #5bc4f0; padding-left: 12px; }
+.group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.group-count { color: var(--text-muted); font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+/* KTX status in header */
+.ktx-active-badge { color: #ff8a65; font-size: 12px; }
+
+/* KTX status badge in settings */
+.ktx-status-badge {
+  background: #3a1e1e;
+  color: #ff8a65;
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+/* Reservation number in result */
+.reservation-number { font-size: 11px; color: var(--text-muted); }

@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, String, Integer, DateTime, JSON
+from sqlalchemy import Column, String, Integer, DateTime, JSON, Boolean
 from backend.db.database import Base
 
 
@@ -7,6 +7,7 @@ class Ticket(Base):
     __tablename__ = "tickets"
 
     id = Column(String(4), primary_key=True)
+    train_type = Column(String(3), nullable=False, default="SRT")  # "SRT" or "KTX"
     dep = Column(String, nullable=False)
     arr = Column(String, nullable=False)
     date = Column(String(8), nullable=False)   # yyyyMMdd
@@ -21,3 +22,6 @@ class Ticket(Base):
     reservation_info = Column(JSON, nullable=True)
     last_searched_at = Column(DateTime, nullable=True)
     last_search_results = Column(JSON, nullable=True)  # [{train_number, dep_time, arr_time, general, special}, ...]
+    # 그룹화
+    group_id = Column(String, nullable=True)
+    manually_completed = Column(Boolean, default=False, nullable=False)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Ticket, TicketCreateRequest } from './types'
-import { listTickets, createTicket } from './api/tickets'
+import { listTickets, createTicket, patchTicket } from './api/tickets'
 import { getAuthStatus, srtLogout } from './api/auth'
 import { subscribeEvents } from './api/events'
 import { TicketForm } from './components/TicketForm'
@@ -13,16 +13,26 @@ type Page = 'main' | 'settings'
 export function App() {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
   const [srtId, setSrtId] = useState<string | null>(null)
+  const [ktxLoggedIn, setKtxLoggedIn] = useState(false)
+  const [ktxId, setKtxId] = useState<string | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loadError, setLoadError] = useState('')
   const [loggingOut, setLoggingOut] = useState(false)
   const [page, setPage] = useState<Page>('main')
+
+  // 그룹화 관련 상태
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [groupInputVisible, setGroupInputVisible] = useState(false)
+  const [groupName, setGroupName] = useState('')
 
   useEffect(() => {
     getAuthStatus()
       .then((s) => {
         setLoggedIn(s.logged_in)
         setSrtId(s.srt_id)
+        setKtxLoggedIn(s.ktx_logged_in)
+        setKtxId(s.ktx_id)
       })
       .catch(() => setLoggedIn(false))
   }, [])
@@ -73,9 +83,7 @@ export function App() {
     setLoggingOut(true)
     try {
       await srtLogout()
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
     setLoggedIn(false)
     setSrtId(null)
     setTickets([])
@@ -96,6 +104,56 @@ export function App() {
     setTickets((prev) => prev.filter((t) => t.ticket_id !== id))
   }
 
+  function handleUpdated(updated: Ticket) {
+    setTickets((prev) => prev.map((t) => (t.ticket_id === updated.ticket_id ? updated : t)))
+  }
+
+  function toggleSelectionMode() {
+    setSelectionMode((v) => !v)
+    setSelectedIds(new Set())
+    setGroupInputVisible(false)
+    setGroupName('')
+  }
+
+  function toggleSelectTicket(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleCreateGroup() {
+    const name = groupName.trim()
+    if (!name) { alert('그룹 이름을 입력하세요.'); return }
+    if (selectedIds.size === 0) { alert('티켓을 선택하세요.'); return }
+
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) => patchTicket(id, { group_id: name }))
+      )
+      setTickets((prev) =>
+        prev.map((t) => selectedIds.has(t.ticket_id) ? { ...t, group_id: name } : t)
+      )
+      setSelectionMode(false)
+      setSelectedIds(new Set())
+      setGroupInputVisible(false)
+      setGroupName('')
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : '그룹 생성 실패')
+    }
+  }
+
+  async function handleUngroup(ticketId: string) {
+    try {
+      const updated = await patchTicket(ticketId, { group_id: '' })
+      handleUpdated(updated)
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : '그룹 해제 실패')
+    }
+  }
+
   if (loggedIn === null) {
     return <div className="app"><p className="empty">로딩 중...</p></div>
   }
@@ -105,21 +163,45 @@ export function App() {
   }
 
   if (page === 'settings') {
-    return <SettingsPage onBack={() => setPage('main')} />
+    return (
+      <SettingsPage
+        onBack={() => setPage('main')}
+        onKtxStatusChange={(loggedIn, id) => {
+          setKtxLoggedIn(loggedIn)
+          setKtxId(id)
+        }}
+      />
+    )
   }
 
   const active = tickets.filter((t) => t.status === 'POLLING' || t.status === 'PENDING')
   const done = tickets.filter((t) => t.status !== 'POLLING' && t.status !== 'PENDING')
+
+  // 그룹화된 티켓 분리
+  const groupedTickets = done.filter((t) => t.group_id)
+  const ungroupedDone = done.filter((t) => !t.group_id)
+
+  // 그룹 ID 목록
+  const groupIds = Array.from(new Set(groupedTickets.map((t) => t.group_id!)))
 
   return (
     <div className="app">
       <header className="app-header">
         <div>
           <h1>Tessera</h1>
-          <span className="subtitle">SRT 자동 예매 — {srtId}</span>
+          <span className="subtitle">
+            SRT 자동 예매 — {srtId}
+            {ktxLoggedIn && <span className="ktx-active-badge"> · KTX({ktxId})</span>}
+          </span>
         </div>
         <div className="header-actions">
           <button className="btn-tg-test" onClick={() => setPage('settings')}>설정</button>
+          <button
+            className={`btn-tg-test${selectionMode ? ' btn-select-active' : ''}`}
+            onClick={toggleSelectionMode}
+          >
+            {selectionMode ? '선택 취소' : '그룹 선택'}
+          </button>
           <button className="btn-logout" onClick={handleLogout} disabled={loggingOut}>
             {loggingOut ? '로그아웃 중...' : '로그아웃'}
           </button>
@@ -127,24 +209,104 @@ export function App() {
       </header>
 
       <main className="app-main">
-        <TicketForm onSubmit={handleCreate} />
+        <TicketForm onSubmit={handleCreate} ktxLoggedIn={ktxLoggedIn} />
 
         {loadError && <p className="error">{loadError}</p>}
 
+        {/* 그룹 생성 UI */}
+        {selectionMode && (
+          <div className="group-create-bar card">
+            <span className="group-create-hint">
+              {selectedIds.size === 0 ? '아래 티켓을 클릭해서 선택하세요' : `${selectedIds.size}개 선택됨`}
+            </span>
+            {selectedIds.size > 0 && !groupInputVisible && (
+              <button className="btn-primary" style={{ marginTop: 0, padding: '6px 16px' }} onClick={() => setGroupInputVisible(true)}>
+                그룹으로 묶기
+              </button>
+            )}
+            {groupInputVisible && (
+              <div className="group-name-input">
+                <input
+                  type="text"
+                  placeholder="그룹 이름 입력 (예: 가족여행 4월)"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreateGroup() }}
+                  autoFocus
+                />
+                <button className="btn-primary" style={{ marginTop: 0, flexShrink: 0 }} onClick={handleCreateGroup}>
+                  확인
+                </button>
+                <button className="btn-tg-test" onClick={() => setGroupInputVisible(false)}>
+                  취소
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 진행 중 */}
         {active.length > 0 && (
           <section>
             <h2 className="section-title">진행 중 ({active.length})</h2>
             {active.map((t) => (
-              <TicketCard key={t.ticket_id} ticket={t} onCancelled={handleCancelled} onDeleted={handleDeleted} />
+              <TicketCard
+                key={t.ticket_id}
+                ticket={t}
+                onCancelled={handleCancelled}
+                onDeleted={handleDeleted}
+                onUpdated={handleUpdated}
+                selectable={selectionMode}
+                selected={selectedIds.has(t.ticket_id)}
+                onSelectToggle={toggleSelectTicket}
+              />
             ))}
           </section>
         )}
 
-        {done.length > 0 && (
+        {/* 그룹별 완료 티켓 */}
+        {groupIds.map((gid) => {
+          const gTickets = groupedTickets.filter((t) => t.group_id === gid)
+          const completedCount = gTickets.filter((t) => t.manually_completed).length
+          return (
+            <section key={gid} className="group-section">
+              <div className="group-header">
+                <h2 className="section-title" style={{ marginBottom: 0 }}>
+                  {gid}
+                  <span className="group-count"> ({completedCount}/{gTickets.length} 완료)</span>
+                </h2>
+              </div>
+              {gTickets.map((t) => (
+                <TicketCard
+                  key={t.ticket_id}
+                  ticket={t}
+                  onCancelled={handleCancelled}
+                  onDeleted={handleDeleted}
+                  onUpdated={handleUpdated}
+                  selectable={selectionMode}
+                  selected={selectedIds.has(t.ticket_id)}
+                  onSelectToggle={toggleSelectTicket}
+                />
+              ))}
+            </section>
+          )
+        })}
+
+        {/* 그룹 없는 완료 티켓 */}
+        {ungroupedDone.length > 0 && (
           <section>
             <h2 className="section-title">완료</h2>
-            {done.map((t) => (
-              <TicketCard key={t.ticket_id} ticket={t} onCancelled={handleCancelled} onDeleted={handleDeleted} />
+            {ungroupedDone.map((t) => (
+              <TicketCard
+                key={t.ticket_id}
+                ticket={t}
+                onCancelled={handleCancelled}
+                onDeleted={handleDeleted}
+                onUpdated={handleUpdated}
+                selectable={selectionMode}
+                selected={selectedIds.has(t.ticket_id)}
+                onSelectToggle={toggleSelectTicket}
+              />
             ))}
           </section>
         )}

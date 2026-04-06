@@ -18,14 +18,11 @@ logger = logging.getLogger(__name__)
 
 _tasks: dict[str, asyncio.Task] = {}
 
-# 인터벌 범위 (초): (min, max)
-# 예약일까지 남은 시간에 따라 로그 스케일로 줄어듦
-_INTERVAL_MIN = 1.0   # 당일: 최소 1초
-_INTERVAL_MAX = 30.0  # 먼 날짜: 최대 30초
+_INTERVAL_MIN = 1.0
+_INTERVAL_MAX = 30.0
 
 
 def _calc_interval(ticket_date: str) -> float:
-    """예약일까지 남은 시간에 따라 로그 스케일 랜덤 인터벌 반환."""
     try:
         target = datetime.datetime.strptime(ticket_date, "%Y%m%d").replace(tzinfo=KST)
     except ValueError:
@@ -34,34 +31,59 @@ def _calc_interval(ticket_date: str) -> float:
     now = datetime.datetime.now(KST)
     hours_left = max((target - now).total_seconds() / 3600, 0)
 
-    # log(hours + 1) 기반: 0시간→0, 1시간→0.69, 24시간→3.2, 720시간(30일)→6.6
-    # 이를 _INTERVAL_MIN ~ _INTERVAL_MAX 범위로 매핑
-    scale = math.log(hours_left + 1) / math.log(721)  # 0.0 ~ 1.0 (30일 기준 정규화)
+    scale = math.log(hours_left + 1) / math.log(721)
     scale = min(scale, 1.0)
 
-    base_min = _INTERVAL_MIN + (_INTERVAL_MAX * 0.4) * scale  # 하한
-    base_max = _INTERVAL_MIN + _INTERVAL_MAX * scale          # 상한
+    base_min = _INTERVAL_MIN + (_INTERVAL_MAX * 0.4) * scale
+    base_max = _INTERVAL_MIN + _INTERVAL_MAX * scale
     base_max = max(base_max, base_min + 0.5)
 
     return random.uniform(base_min, base_max)
 
 
-def _train_to_dict(train) -> dict:
-    return {
-        "train_name": getattr(train, "train_name", ""),
-        "train_number": getattr(train, "train_number", ""),
-        "dep_time": getattr(train, "dep_time", ""),
-        "arr_time": getattr(train, "arr_time", ""),
-        "general_seat": getattr(train, "general_seat_state", ""),
-        "special_seat": getattr(train, "special_seat_state", ""),
-        "general_available": train.general_seat_available() if hasattr(train, "general_seat_available") else False,
-        "special_available": train.special_seat_available() if hasattr(train, "special_seat_available") else False,
-    }
+def _is_seat_available(train, train_type: str) -> bool:
+    """열차 타입에 따라 좌석 가용 여부 확인."""
+    if train_type == "KTX":
+        if hasattr(train, "has_seat"):
+            return train.has_seat()
+        return False
+    else:
+        if hasattr(train, "seat_available"):
+            return train.seat_available()
+        return False
+
+
+def _train_to_dict(train, train_type: str = "SRT") -> dict:
+    if train_type == "KTX":
+        general_avail = train.has_general_seat() if hasattr(train, "has_general_seat") else False
+        special_avail = train.has_special_seat() if hasattr(train, "has_special_seat") else False
+        return {
+            "train_name": getattr(train, "train_name", "KTX"),
+            "train_number": getattr(train, "train_no", getattr(train, "train_number", "")),
+            "dep_time": getattr(train, "dep_time", ""),
+            "arr_time": getattr(train, "arr_time", ""),
+            "general_seat": "예약가능" if general_avail else "매진",
+            "special_seat": "예약가능" if special_avail else "매진",
+            "general_available": general_avail,
+            "special_available": special_avail,
+        }
+    else:
+        return {
+            "train_name": getattr(train, "train_name", ""),
+            "train_number": getattr(train, "train_number", ""),
+            "dep_time": getattr(train, "dep_time", ""),
+            "arr_time": getattr(train, "arr_time", ""),
+            "general_seat": getattr(train, "general_seat_state", ""),
+            "special_seat": getattr(train, "special_seat_state", ""),
+            "general_available": train.general_seat_available() if hasattr(train, "general_seat_available") else False,
+            "special_available": train.special_seat_available() if hasattr(train, "special_seat_available") else False,
+        }
 
 
 def _ticket_to_dict(ticket: Ticket) -> dict:
     return {
         "ticket_id": ticket.id,
+        "train_type": ticket.train_type or "SRT",
         "dep": ticket.dep,
         "arr": ticket.arr,
         "date": ticket.date,
@@ -76,15 +98,55 @@ def _ticket_to_dict(ticket: Ticket) -> dict:
         "reservation_info": ticket.reservation_info,
         "last_searched_at": ticket.last_searched_at.isoformat() if ticket.last_searched_at else None,
         "last_search_results": ticket.last_search_results,
+        "group_id": ticket.group_id,
+        "manually_completed": bool(ticket.manually_completed),
+    }
+
+
+def _extract_ktx_reservation_info(reservation) -> dict:
+    """korail2 Reservation 객체에서 예매 정보 추출."""
+    return {
+        "reservation_number": getattr(reservation, "rsv_id", getattr(reservation, "h_pnr_no", "")),
+        "total_cost": getattr(reservation, "total_cost", 0),
+        "train_name": getattr(reservation, "train_name", "KTX"),
+        "train_number": getattr(reservation, "train_no", getattr(reservation, "train_number", "")),
+        "dep_time": getattr(reservation, "dep_time", ""),
+        "arr_time": getattr(reservation, "arr_time", ""),
+        "dep_station_name": getattr(reservation, "dep_name", getattr(reservation, "dep_station_name", "")),
+        "arr_station_name": getattr(reservation, "arr_name", getattr(reservation, "arr_station_name", "")),
+        "payment_date": getattr(reservation, "buy_limit_date", getattr(reservation, "payment_date", "")),
+        "payment_time": getattr(reservation, "buy_limit_time", getattr(reservation, "payment_time", "")),
     }
 
 
 async def _poll(ticket_id: str):
-    creds = auth.get_credentials()
-    if not creds:
-        logger.warning(f"[{ticket_id}] 로그인 정보 없음, 폴링 중단")
-        return
-    client = SRTClient(creds["srt_id"], creds["srt_password"])
+    db = SessionLocal()
+    try:
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not ticket:
+            return
+        train_type = ticket.train_type or "SRT"
+    finally:
+        db.close()
+
+    if train_type == "KTX":
+        creds = auth.get_ktx_credentials()
+        if not creds:
+            logger.warning(f"[{ticket_id}] KTX 로그인 정보 없음, 폴링 중단")
+            return
+        try:
+            from backend.core.ktx_client import KTXClient
+            client = KTXClient(creds["ktx_id"], creds["ktx_password"])
+        except ImportError as e:
+            logger.error(f"[{ticket_id}] KTXClient 로드 실패: {e}")
+            return
+    else:
+        creds = auth.get_credentials()
+        if not creds:
+            logger.warning(f"[{ticket_id}] SRT 로그인 정보 없음, 폴링 중단")
+            return
+        client = SRTClient(creds["srt_id"], creds["srt_password"])
+
     last_report = datetime.datetime.now(KST)
 
     while True:
@@ -103,10 +165,10 @@ async def _poll(ticket_id: str):
                 )
                 ticket.attempt_count += 1
                 ticket.last_searched_at = datetime.datetime.now(KST)
-                ticket.last_search_results = [_train_to_dict(t) for t in all_trains]
+                ticket.last_search_results = [_train_to_dict(t, train_type) for t in all_trains]
                 db.commit()
 
-                trains = [t for t in all_trains if t.seat_available()]
+                trains = [t for t in all_trains if _is_seat_available(t, train_type)]
                 if trains:
                     for train in trains:
                         try:
@@ -116,23 +178,28 @@ async def _poll(ticket_id: str):
                         except asyncio.CancelledError:
                             raise
                         except Exception as e:
-                            logger.warning(f"[{ticket_id}] reserve failed for train {getattr(train, 'train_number', '?')}: {repr(e)}")
+                            logger.warning(f"[{ticket_id}] reserve failed: {repr(e)}")
                             continue
 
                         ticket.status = "SUCCESS"
                         ticket.reserved_at = datetime.datetime.now(KST)
-                        ticket.reservation_info = {
-                            "reservation_number": reservation.reservation_number,
-                            "total_cost": reservation.total_cost,
-                            "train_name": reservation.train_name,
-                            "train_number": reservation.train_number,
-                            "dep_time": reservation.dep_time,
-                            "arr_time": reservation.arr_time,
-                            "dep_station_name": reservation.dep_station_name,
-                            "arr_station_name": reservation.arr_station_name,
-                            "payment_date": reservation.payment_date,
-                            "payment_time": reservation.payment_time,
-                        }
+
+                        if train_type == "KTX":
+                            ticket.reservation_info = _extract_ktx_reservation_info(reservation)
+                        else:
+                            ticket.reservation_info = {
+                                "reservation_number": reservation.reservation_number,
+                                "total_cost": reservation.total_cost,
+                                "train_name": reservation.train_name,
+                                "train_number": reservation.train_number,
+                                "dep_time": reservation.dep_time,
+                                "arr_time": reservation.arr_time,
+                                "dep_station_name": reservation.dep_station_name,
+                                "arr_station_name": reservation.arr_station_name,
+                                "payment_date": reservation.payment_date,
+                                "payment_time": reservation.payment_time,
+                            }
+
                         db.commit()
                         ticket_data = _ticket_to_dict(ticket)
                         await event_bus.publish("ticket.success", ticket_data)
